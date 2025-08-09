@@ -2,12 +2,12 @@ import os, json, logging, asyncio
 from typing import Dict, Any
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, PlainTextResponse
 from dotenv import load_dotenv
 
 from .auth import verify_request
 from .rate_limit import allow
-from . import runners, tasks, memory
+from . import runners, tasks, memory, asi
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -21,6 +21,23 @@ async def boot():
 
 @app.get("/health")
 async def health(): return {"ok": True}
+
+@app.get("/ready")
+async def ready(): return {"ok": True}
+
+@app.get("/metrics")
+async def metrics():
+    return PlainTextResponse("dummy_metric 1\n")
+
+@app.get("/asi/score")
+async def asi_score():
+    """Expose idealized ASI criteria scores.
+
+    This endpoint serves demonstration purposes and does not attest to
+    real-world superintelligence. Clients can consume the numeric schema
+    to display rating badges or other visual indicators.
+    """
+    return asi.perfect_scores()
 
 @app.post("/chat")
 async def chat(data: Dict[str, Any], request: Request, _auth=Depends(verify_request)):
@@ -103,4 +120,46 @@ async def vectors_query(data: Dict[str, Any], request: Request, _auth=Depends(ve
 async def vectors_all(request: Request, limit: int = 200, _auth=Depends(verify_request)):
     allow(request, 5)
     return memory.all_vectors(limit)
+
+
+@app.post("/tools/execute")
+async def tools_execute(data: Dict[str, Any], request: Request, _auth=Depends(verify_request)):
+    allow(request, 10)
+    plan = data.get("plan", [])
+    results = []
+    for step in plan:
+        tool = step.get("tool")
+        args = step.get("args", {})
+        if tool == "system.shell":
+            cmd = args.get("cmd")
+            if not isinstance(cmd, list):
+                results.append({"error": "cmd must be list"})
+                continue
+            allowed = {"ls", "git", "python"}
+            if cmd[0] not in allowed:
+                results.append({"error": "command not allowed"})
+                continue
+            proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            out, err = await proc.communicate()
+            results.append({"stdout": out.decode(), "stderr": err.decode(), "returncode": proc.returncode})
+        elif tool == "web.fetch":
+            url = args.get("url")
+            if not url:
+                results.append({"error": "missing url"})
+                continue
+            import httpx
+            async with httpx.AsyncClient() as client:
+                r = await client.get(url)
+                results.append({"status": r.status_code, "text": r.text[:1000]})
+        elif tool == "web.search":
+            query = args.get("query")
+            k = int(args.get("max_results", 3))
+            import re, httpx
+            async with httpx.AsyncClient() as client:
+                r = await client.get("https://duckduckgo.com/html/", params={"q": query})
+            links = re.findall(r'<a class="result__a" href="(.*?)"', r.text)
+            results.append({"results": [{"url": u} for u in links[:k]]})
+        else:
+            results.append({"error": f"unknown tool {tool}"})
+    return {"result": results}
 

@@ -2,17 +2,36 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 from typing import Dict, Any
-from openai import OpenAI
+from openai import AsyncOpenAI
+from . import memory, safety
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-async def _chat(prompt: str, system: str) -> str:
-    r = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role":"system","content":system},{"role":"user","content":prompt}],
-        temperature=0.2
+TOOLS = [
+    {"type": "function",
+     "function": {
+       "name": "memory.search",
+       "description": "retrieve relevant documents",
+       "parameters": {"type": "object","properties":{"query":{"type":"string"}}}}},
+    {"type": "function",
+     "function": {
+       "name": "memory.write",
+       "description": "store new facts",
+       "parameters": {"type": "object","properties":{"id":{"type":"string"},"text":{"type":"string"}}}}}
+]
+
+async def _chat(prompt: str, system: str, tools=TOOLS) -> str:
+    """High-reasoning chat with tool use and safety checks."""
+    resp = await client.responses.create(
+        model="gpt-4o-reasoning",
+        input=[{"role":"system","content":system},
+               {"role":"user","content":prompt}],
+        tools=tools,
+        temperature=0.2,
     )
-    return r.choices[0].message.content
+    text = resp.output[0].content[0].text
+    safety.enforce(text)
+    return text
 
 async def run_planning(payload: Dict[str, Any]):
     ctx = payload.get("context","Plan the task")
@@ -26,7 +45,12 @@ async def run_evaluation(payload: Dict[str, Any]):
 
 async def run_self_model(payload: Dict[str, Any]):
     about = payload.get("about","the system")
-    out = await _chat(f"Self-assess capabilities, limits, and next steps regarding {about}.", "You perform introspective analysis.")
+    out = await _chat(
+        f"Update the persistent self-model about {about}.",
+        "You perform truthful introspection.",
+    )
+    from . import self_state
+    self_state.update(out)
     return {"self_model": out}
 
 async def run_policy_loops(payload: Dict[str, Any]):

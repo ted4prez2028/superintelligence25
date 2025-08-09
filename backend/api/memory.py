@@ -1,13 +1,20 @@
-import os, sqlite3, math, json
+import os
 from typing import Dict, List
 from openai import OpenAI
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import Column, String, create_engine, select
+from sqlalchemy.orm import declarative_base, Session
 
-DB = os.path.join(os.path.dirname(__file__), "..", "memory.db")
+ENGINE = create_engine(os.getenv("PGVECTOR_URL","sqlite:///memory.db"))
+Base = declarative_base()
 
-def _conn():
-    c = sqlite3.connect(DB)
-    c.execute("CREATE TABLE IF NOT EXISTS vectors (id TEXT PRIMARY KEY, text TEXT, embedding BLOB)")
-    return c
+class Memory(Base):
+    __tablename__ = "vectors"
+    id = Column(String, primary_key=True)
+    text = Column(String)
+    embedding = Column(Vector(1536))
+
+Base.metadata.create_all(ENGINE)
 
 def _embed(text: str) -> List[float]:
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -15,30 +22,25 @@ def _embed(text: str) -> List[float]:
     return r.data[0].embedding
 
 def upsert(id: str, text: str) -> Dict:
-    e = json.dumps(_embed(text)).encode('utf-8')
-    with _conn() as c:
-        c.execute("REPLACE INTO vectors (id,text,embedding) VALUES (?,?,?)", (id,text,e))
+    e = _embed(text)
+    with Session(ENGINE) as s:
+        s.merge(Memory(id=id, text=text, embedding=e))
+        s.commit()
     return {"id": id}
 
 def query(text: str, top_k: int = 5) -> Dict:
     q = _embed(text)
-    with _conn() as c:
-        rows = c.execute("SELECT id,text,embedding FROM vectors").fetchall()
-    res = []
-    for rid, rtext, remb in rows:
-        v = json.loads(remb.decode('utf-8'))
-        sim = float(np.dot(q,v) / (np.linalg.norm(q)*np.linalg.norm(v) + 1e-9))
-        res.append({"id": rid, "text": rtext, "score": sim})
-    res.sort(key=lambda x: x["score"], reverse=True)
-    return {"results": res[:top_k]}
+    stmt = select(Memory).order_by(Memory.embedding.l2_distance(q)).limit(top_k)
+    with Session(ENGINE) as s:
+        rows = s.scalars(stmt).all()
+    return {"results": [{"id": r.id, "text": r.text} for r in rows]}
 
 
 def all_vectors(limit: int = 200):
-    with _conn() as c:
-        rows = c.execute("SELECT id, text, embedding FROM vectors LIMIT ?", (limit,)).fetchall()
+    stmt = select(Memory).limit(limit)
+    with Session(ENGINE) as s:
+        rows = s.scalars(stmt).all()
     out = []
-    for rid, rtext, remb in rows:
-        import numpy as np
-        v = json.loads(remb.decode('utf-8')).tolist()
-        out.append({"id": rid, "text": rtext, "embedding": v})
+    for r in rows:
+        out.append({"id": r.id, "text": r.text, "embedding": list(r.embedding)})
     return {"items": out}

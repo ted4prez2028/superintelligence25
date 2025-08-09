@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 from .auth import verify_request
 from .rate_limit import allow
-from . import runners, tasks, memory
+from . import runners, tasks, memory, self_state
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -103,4 +103,15 @@ async def vectors_query(data: Dict[str, Any], request: Request, _auth=Depends(ve
 async def vectors_all(request: Request, limit: int = 200, _auth=Depends(verify_request)):
     allow(request, 5)
     return memory.all_vectors(limit)
+
+@app.get("/self-state")
+async def get_self_state(request: Request, _auth=Depends(verify_request)):
+    allow(request, 1)
+    return self_state.load()
+
+@app.post("/self-reflect")
+async def reflect(data: Dict[str, Any], request: Request, _auth=Depends(verify_request)):
+    allow(request, 5)
+    about = data.get("about","the system")
+    return await runners.run_self_model({"about": about})
 

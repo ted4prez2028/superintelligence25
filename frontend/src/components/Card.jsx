@@ -1,0 +1,1 @@
+import React from 'react';export default function Card({title,right,children,className=''}){return(<div className={`bg-card/80 border border-white/10 rounded-2xl p-5 shadow-[0_10px_30px_rgba(0,0,0,.35)] ${className}`}>{(title||right)&&(<div className='flex items-center justify-between mb-3'><h3 className='text-lg font-semibold'>{title}</h3>{right}</div>)}{children}</div>);}

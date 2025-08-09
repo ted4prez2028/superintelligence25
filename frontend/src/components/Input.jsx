@@ -1,0 +1,1 @@
+import React from 'react';export default function Input({className='',...props}){return <input className={`w-full h-11 px-3 rounded-xl bg-white/10 border border-white/10 focus:outline-none focus:border-primary/60 ${className}`} {...props}/>;}

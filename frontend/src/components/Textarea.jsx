@@ -1,0 +1,1 @@
+import React from 'react';export default function Textarea({className='',...props}){return <textarea className={`w-full min-h-[140px] p-3 rounded-xl bg-white/10 border border-white/10 focus:outline-none focus:border-primary/60 ${className}`} {...props}/>;}

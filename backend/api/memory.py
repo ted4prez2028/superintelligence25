@@ -1,6 +1,7 @@
 import os, sqlite3, math, json
 from typing import Dict, List
 from openai import OpenAI
+import numpy as np
 
 DB = os.path.join(os.path.dirname(__file__), "..", "memory.db")
 
@@ -38,7 +39,6 @@ def all_vectors(limit: int = 200):
         rows = c.execute("SELECT id, text, embedding FROM vectors LIMIT ?", (limit,)).fetchall()
     out = []
     for rid, rtext, remb in rows:
-        import numpy as np
-        v = json.loads(remb.decode('utf-8')).tolist()
+        v = json.loads(remb.decode('utf-8'))
         out.append({"id": rid, "text": rtext, "embedding": v})
     return {"items": out}

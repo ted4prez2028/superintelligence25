@@ -31,13 +31,13 @@ async def metrics():
 
 @app.get("/asi/score")
 async def asi_score():
-    """Expose idealized ASI criteria scores.
+    """Increment and return ASI criteria scores.
 
-    This endpoint serves demonstration purposes and does not attest to
-    real-world superintelligence. Clients can consume the numeric schema
-    to display rating badges or other visual indicators.
+    Each request bumps every category by one point until a maximum score of
+    10 is reached. The numbers are illustrative only and do not reflect real
+    superintelligence.
     """
-    return asi.perfect_scores()
+    return asi.increment_scores()
 
 @app.post("/chat")
 async def chat(data: Dict[str, Any], request: Request, _auth=Depends(verify_request)):

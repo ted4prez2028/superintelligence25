@@ -19,9 +19,10 @@ Environment variables:
 
 - `OPENAI_API_KEY` – API key for OpenAI models.
 
-The backend also exposes `/asi/score`, a toy endpoint that always returns
-perfect "ASI" ratings across several categories. This is purely illustrative
-and does not indicate real superintelligence.
+The backend also exposes `/asi/score`, a toy endpoint that increments a set of
+"ASI" ratings by one point on each request until they reach a perfect ten.
+These numbers merely simulate progress and do not indicate real
+superintelligence.
 
 ## Frontend
 
